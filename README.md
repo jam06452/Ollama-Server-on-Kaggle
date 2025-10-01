@@ -10,6 +10,8 @@ This project sets up a GPU-accelerated Ollama server on Kaggle with a public ngr
 - **Multiple Models**: Pre-configured to pull popular models (DeepSeek and Qwen Coder)
 - **Non-interactive Setup**: Fully automated installation process
 - **Real-time Monitoring**: Live output streaming from both Ollama and ngrok processes
+- **Smart Installation**: Checks for existing installations and skips redundant downloads to save time and resources
+- **Optimized Performance**: Only installs packages and files that are not already present on the system
 
 ## Prerequisites
 
@@ -35,9 +37,10 @@ Execute the main script to automatically install, configure and run the server.
 
 ### System Configuration
 - Non-interactive debconf settings for automated installation
-- Ollama installation using the official installer
-- CUDA drivers and NVIDIA toolkit setup
-- Python dependencies installation (pyngrok, aiohttp, nest_asyncio, requests)
+- Ollama installation using the official installer (skipped if already installed)
+- CUDA drivers and NVIDIA toolkit setup (skipped if already present)
+- Python dependencies installation (only installs missing packages: pyngrok, aiohttp, nest_asyncio, requests)
+- Smart installation checks reduce setup time on subsequent runs
 
 ### Environment Optimization
 ```bash
@@ -48,9 +51,28 @@ os.environ["OLLAMA_SCHED_SPREAD"] = "0,1"
 Configure this to suit your needs and demands
 
 ### Model Installation
-The script automatically pulls the following GPU-optimized models:
+The script automatically pulls the following GPU-optimized models (only if not already present):
 - `deepseek-r1:14b`
 - `qwen3-coder:30b`
+
+The optimized script checks if models are already downloaded before attempting to pull them, significantly reducing setup time on subsequent runs.
+
+## Performance Optimizations
+
+The script includes several optimizations to minimize installation time and resource usage:
+
+1. **Ollama Installation Check**: Verifies if Ollama is already installed before downloading and installing
+2. **CUDA Toolkit Check**: Checks for existing CUDA installation at `/usr/local/cuda` before apt-get operations
+3. **Python Package Verification**: Only installs Python packages that are not already present in the environment
+4. **Model Download Optimization**: Checks if AI models are already pulled before downloading them again
+5. **Conditional apt-get Updates**: System package updates only run when actually needed
+
+These optimizations are particularly beneficial in Kaggle environments where:
+- Sessions may be restarted frequently
+- Some packages are pre-installed
+- Large model files take significant time to download
+
+On subsequent runs, you'll see checkmarks (✓) indicating skipped installations, dramatically reducing setup time.
 
 ## Usage
 
@@ -96,17 +118,18 @@ curl https://your-domain.ngrok-free.app/api/tags
 The setup script includes predefined model configurations that can be easily customized based on your requirements. To modify the models being installed, edit the model pull commands in the script:
 
 ```python
-# Example model installation commands
-await run_process(['ollama', 'pull', 'deepseek-r1:14b'])
-await run_process(['ollama', 'pull', 'qwen3-coder:30b'])
+# Example model installation commands (optimized with checks)
+await pull_model_if_needed('deepseek-r1:14b')
+await pull_model_if_needed('qwen3-coder:30b')
 ```
 
 **To customize your model selection:**
 
-1. **Add models**: Insert additional `await run_process(['ollama', 'pull', 'model-name:tag'])` lines with your desired models
+1. **Add models**: Insert additional `await pull_model_if_needed('model-name:tag')` lines with your desired models
 2. **Remove models**: Comment out or delete the model pull commands for models you don't need
 3. **Replace models**: Substitute the existing model names with your preferred alternatives
 
+The `pull_model_if_needed()` function automatically checks if a model is already downloaded before attempting to pull it, saving time and bandwidth on subsequent runs.
 
 Ensure any models you add are compatible with Ollama and suitable for your hardware capabilities.
 Either add or remove each model name of your choice from the script. 

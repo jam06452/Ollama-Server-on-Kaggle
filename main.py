@@ -1,19 +1,74 @@
-# Install all required dependencies with non-interactive setup
-print("Setting up non-interactive environment...")
-!echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
-!echo "keyboard-configuration keyboard-configuration/layoutcode string us" | sudo debconf-set-selections
-!echo "keyboard-configuration keyboard-configuration/variantcode string" | sudo debconf-set-selections
+# Optimized installation with checks for existing packages
+import subprocess
+import sys
+import os
 
-print("Installing system dependencies...")
-!curl -fsSL https://ollama.ai/install.sh | sudo sh
-!sudo apt-get update -y
-!sudo DEBIAN_FRONTEND=noninteractive apt-get install -y cuda-drivers ocl-icd-opencl-dev nvidia-cuda-toolkit
-!pip install pyngrok==6.1.0 aiohttp nest_asyncio requests
+def check_command_exists(cmd):
+    """Check if a command exists in the system"""
+    try:
+        subprocess.run([cmd, '--version'], capture_output=True, check=False)
+        return True
+    except FileNotFoundError:
+        return False
+
+def check_python_package(package):
+    """Check if a Python package is installed"""
+    try:
+        __import__(package.split('==')[0].replace('-', '_'))
+        return True
+    except ImportError:
+        return False
+
+def check_path_exists(path):
+    """Check if a path exists"""
+    return os.path.exists(path)
+
+print("Checking for existing installations...")
+
+# Check and install Ollama only if not present
+if not check_command_exists('ollama'):
+    print("Installing Ollama...")
+    !echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
+    !curl -fsSL https://ollama.ai/install.sh | sudo sh
+else:
+    print("✓ Ollama already installed, skipping...")
+
+# Check CUDA toolkit before installing
+cuda_needed = False
+if not check_path_exists('/usr/local/cuda'):
+    print("CUDA not found, will install...")
+    cuda_needed = True
+else:
+    print("✓ CUDA already present, skipping...")
+
+# Install system dependencies only if needed
+if cuda_needed:
+    print("Installing CUDA and GPU drivers...")
+    !echo "keyboard-configuration keyboard-configuration/layoutcode string us" | sudo debconf-set-selections
+    !echo "keyboard-configuration keyboard-configuration/variantcode string" | sudo debconf-set-selections
+    !sudo apt-get update -y
+    !sudo DEBIAN_FRONTEND=noninteractive apt-get install -y cuda-drivers ocl-icd-opencl-dev nvidia-cuda-toolkit
+else:
+    print("✓ GPU drivers already configured")
+
+# Check and install Python packages only if needed
+packages_to_install = []
+for pkg in ['pyngrok==6.1.0', 'aiohttp', 'nest_asyncio', 'requests']:
+    pkg_name = pkg.split('==')[0]
+    if not check_python_package(pkg_name):
+        packages_to_install.append(pkg)
+    else:
+        print(f"✓ {pkg_name} already installed")
+
+if packages_to_install:
+    print(f"Installing Python packages: {', '.join(packages_to_install)}")
+    !pip install -q {' '.join(packages_to_install)}
+else:
+    print("✓ All Python packages already installed")
 
 # Verify GPU setup
-print("Verifying GPU setup...")
+print("\nVerifying GPU setup...")
 !nvidia-smi
-!ls /usr/local/cuda
 
 print("Starting main script...")
 import os
@@ -64,6 +119,28 @@ async def wait_for_url(url, timeout=30):
             pass
         await asyncio.sleep(1)
     raise RuntimeError(f"Timeout waiting for {url}")
+
+async def check_model_exists(model_name):
+    """Check if an Ollama model is already pulled"""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            'ollama', 'list',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await proc.communicate()
+        model_list = stdout.decode()
+        return model_name in model_list
+    except:
+        return False
+
+async def pull_model_if_needed(model_name):
+    """Pull model only if it's not already present"""
+    if await check_model_exists(model_name):
+        print(f"✓ Model {model_name} already exists, skipping download...")
+        return
+    print(f"Pulling model {model_name}...")
+    await run_process(['ollama', 'pull', model_name])
 
 def setup_ngrok_config():
     """Create ngrok config file for static domain"""
@@ -145,10 +222,10 @@ async def main():
     # Wait for Ollama API
     await wait_for_url('http://127.0.0.1:11434/v1/models')
     
-    # Pull models (GPU-optimized)
-    print("Pulling GPU-optimized models...")
-    await run_process(['ollama', 'pull', 'deepseek-r1:14b'])
-    await run_process(['ollama', 'pull', 'qwen3-coder:30b'])
+    # Pull models (GPU-optimized) only if not already present
+    print("Checking and pulling GPU-optimized models...")
+    await pull_model_if_needed('deepseek-r1:14b')
+    await pull_model_if_needed('qwen3-coder:30b')
     
     # Start ngrok with static domain
     ngrok_process = await start_ngrok()
