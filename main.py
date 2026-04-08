@@ -5,6 +5,7 @@ print("Setting up non-interactive environment...")
 !echo "keyboard-configuration keyboard-configuration/variantcode string" | sudo debconf-set-selections
 
 print("Installing system dependencies...")
+!sudo DEBIAN_FRONTEND=noninteractive apt-get install zstd -y
 !curl -fsSL https://ollama.ai/install.sh | sudo sh
 !sudo apt-get update -y
 !sudo DEBIAN_FRONTEND=noninteractive apt-get install -y cuda-drivers ocl-icd-opencl-dev nvidia-cuda-toolkit
